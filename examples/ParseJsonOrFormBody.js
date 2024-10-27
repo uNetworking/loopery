@@ -4,34 +4,34 @@ const querystring = require('node:querystring');
 const uWS = require('../dist/uws.js');
 const port = 9001;
 
-/** @return {Promise<Buffer>} */
-const parseBody = (res) => {
-    // Cache parse promise
-    if (res._parseBodyPromise) return res._parseBodyPromise;
-    return res._parseBodyPromise = new Promise((resolve) => {
-        let buffer = Buffer.alloc(0);
-        // Register data callback
-        res.onData((ab, isLast) => {
-            buffer = Buffer.concat([buffer, Buffer.from(ab)]);
-            if (isLast) resolve(buffer);
-        });
+// Helper function for parsing JSON body
+const parseJSONBody = (res, callback) => {
+    let buffer = Buffer.alloc(0);
+    // Register data callback
+    res.onData((ab, isLast) => {
+        buffer = Buffer.concat([buffer, Buffer.from(ab)]);
+        if (isLast) {
+            let parsedJson;
+            try { parsedJson = JSON.parse(buffer.toString()); }
+            catch { parsedJson = null; }
+            callback(parsedJson);
+        }
     });
 };
 
-/** @return {Promise<?Object>} */
-const parseJSONBody = async (res) => {
-    // Cache parsed body
-    if (res._parsedJSONBody) return res._parsedJSONBody;
-    try { return res._parsedJSONBody = JSON.parse((await parseBody(res)).toString()); }
-    catch { return res._parsedJSONBody = null; }
-};
-
-/** @return {Promise<?Object<string, string|string[]>>} */
-const parseFormBody = async (res) => {
-    // Cache parsed body
-    if (res._parsedFormBody) return res._parsedFormBody;
-    try { return res._parsedFormBody = querystring.parse((await parseBody(res)).toString()); }
-    catch { return res._parsedFormBody = null; }
+// Helper function for parsing URL-encoded form body
+const parseFormBody = (res, callback) => {
+    let buffer = Buffer.alloc(0);
+    // Register data callback
+    res.onData((ab, isLast) => {
+        buffer = Buffer.concat([buffer, Buffer.from(ab)]);
+        if (isLast) {
+            let parsedForm;
+            try { parsedForm = querystring.parse(buffer.toString()); }
+            catch { parsedForm = null; }
+            callback(parsedForm);
+        }
+    });
 };
 
 const app = uWS./*SSL*/App({
@@ -44,7 +44,7 @@ const app = uWS./*SSL*/App({
         res.aborted = true;
     });
 
-    parseJSONBody(res).then((object) => {
+    parseJSONBody(res, (object) => {
         if (res.aborted) return;
         if (!object) {
             console.log('Invalid JSON or no data at all!');
@@ -65,7 +65,7 @@ const app = uWS./*SSL*/App({
         res.aborted = true;
     });
 
-    parseFormBody(res).then((form) => {
+    parseFormBody(res, (form) => {
         if (res.aborted) return;
         if (!form || !form.myData) {
             console.log('Invalid form body or no data at all!');
